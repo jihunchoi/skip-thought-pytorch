@@ -1,6 +1,7 @@
 import os
 import random
 
+import numpy as np
 import torch
 
 
@@ -68,21 +69,27 @@ class DataReader(object):
             raise StopIteration
         return data
 
+    def iterator(self, batch_size):
+        while True:
+            yield self.next_batch(batch_size)
+
 
 class Preprocessor(object):
 
     """Preprocess data triples in a pretty form."""
 
     def __init__(self, predict_prev, predict_cur, predict_next, vocab,
-                 split_fn=str.split):
+                 max_length, split_fn=str.split, gpu=-1):
         self.predict_prev = predict_prev
         self.predict_cur = predict_cur
         self.predict_next = predict_next
         self.vocab = vocab
+        self.max_length = max_length
         self.split_fn = split_fn
+        self.gpu = gpu
 
     def _split_into_words(self, batch):
-        return [self.split_fn(d) for d in batch]
+        return [self.split_fn(d)[:self.max_length] for d in batch]
 
     def _wrap_with_bos_eos(self, batch):
         return [[self.vocab.bos] + d + [self.vocab.eos]
@@ -99,13 +106,19 @@ class Preprocessor(object):
         return [[self.vocab.stoi(s) for s in d]
                 for d in batch]
 
-    def _process_src(self, batch):
+    def _process_src(self, batch, sort_indices):
+        batch = self._sort(batch=batch, sort_indices=sort_indices)
         padded_batch, lengths = self._pad_batch(batch)
         return self._numericalize(padded_batch), lengths
 
-    def _process_tgt(self, batch):
+    def _process_tgt(self, batch, sort_indices):
+        batch = self._sort(batch=batch, sort_indices=sort_indices)
         padded_batch, lengths = self._pad_batch(self._wrap_with_bos_eos(batch))
         return self._numericalize(padded_batch), lengths
+
+    @staticmethod
+    def _sort(batch, sort_indices):
+        return [batch[i] for i in sort_indices]
 
     def __call__(self, batch):
         prev, cur, next_ = list(zip(*batch))
@@ -113,15 +126,23 @@ class Preprocessor(object):
         cur = self._split_into_words(cur)
         next_ = self._split_into_words(next_)
 
-        src = self._process_src(cur)
+        sort_indices = np.argsort([len(d) for d in cur])[::-1]
+
+        src = self._process_src(cur, sort_indices=sort_indices)
         tgt = dict()
         if self.predict_prev:
-            tgt['prev'] = self._process_tgt(prev)
+            tgt['prev'] = self._process_tgt(prev, sort_indices=sort_indices)
         if self.predict_cur:
-            tgt['cur'] = self._process_tgt(cur)
+            tgt['cur'] = self._process_tgt(cur, sort_indices=sort_indices)
         if self.predict_next:
-            tgt['next'] = self._process_tgt(next_)
-        src = (torch.LongTensor(src[0]), torch.LongTensor(src[1]))
-        tgt = {k: (torch.LongTensor(v[0]), torch.LongTensor(v[1]))
+            tgt['next'] = self._process_tgt(next_, sort_indices=sort_indices)
+
+        src = (torch.LongTensor(src[0]).t(), torch.LongTensor(src[1]))
+        tgt = {k: (torch.LongTensor(v[0]).t(), torch.LongTensor(v[1]))
                for k, v in tgt.items()}
-        return {'src': src, 'tgt': tgt}
+
+        if self.gpu > -1:
+            src = tuple(t.cuda(self.gpu) for t in src)
+            for k in tgt:
+                tgt[k] = tuple(t.cuda(self.gpu) for t in tgt[k])
+        return src, tgt
