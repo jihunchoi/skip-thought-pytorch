@@ -91,6 +91,9 @@ class Preprocessor(object):
     def _split_into_words(self, batch):
         return [self.split_fn(d)[:self.max_length] for d in batch]
 
+    def _append_eos(self, batch):
+        return [d + [self.vocab.eos] for d in batch]
+
     def _wrap_with_bos_eos(self, batch):
         return [[self.vocab.bos] + d + [self.vocab.eos]
                 for d in batch]
@@ -108,7 +111,7 @@ class Preprocessor(object):
 
     def _process_src(self, batch, sort_indices):
         batch = self._sort(batch=batch, sort_indices=sort_indices)
-        padded_batch, lengths = self._pad_batch(batch)
+        padded_batch, lengths = self._pad_batch(self._append_eos(batch))
         return self._numericalize(padded_batch), lengths
 
     def _process_tgt(self, batch, sort_indices):

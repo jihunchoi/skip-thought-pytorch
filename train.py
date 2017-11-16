@@ -1,6 +1,6 @@
 import argparse
 import os
-import random
+from pprint import pprint
 
 import torch
 import yaml
@@ -29,6 +29,7 @@ def train(args):
         predict_prev=args.predict_prev,
         predict_cur=args.predict_cur,
         predict_next=args.predict_next)
+    print(model)
     if args.gpu > -1:
         model.cuda(args.gpu)
     optimizer = optim.Adam(model.parameters())
@@ -124,7 +125,7 @@ def train(args):
                    'tgt': {},
                    'out': {}}
             for k in tgt:
-                res['tgt'][k] = ' '.join(ids_to_words(tgt[k][0][:, i].data))
+                res['tgt'][k] = ' '.join(ids_to_words(tgt[k][0][1:, i].data))
                 res['out'][k] = ' '.join(ids_to_words(generated[k][i]))
             results.append(res)
         return results
@@ -138,12 +139,13 @@ def train(args):
         gen_results = generate(samples)
         text_val = ''
         for i, res in enumerate(gen_results):
-            text_val += f'\n\nsrc #{i}: {res["src"]}'
+            text_val += f'* sample #{i}\n'
+            text_val += f'\t* src: {res["src"]}\n'
             for k in res['tgt']:
                 tgt_k = res['tgt'][k]
                 out_k = res['out'][k]
-                text_val += f'\n\n{k} #{i} (tgt): {tgt_k}'
-                text_val += f'\n\n{k} #{i} (out): {out_k}\n\n'
+                text_val += f'\t* {k} (tgt): {tgt_k}\n'
+                text_val += f'\t* {k} (out): {out_k}\n'
         add_text_summary('Sample', value=text_val, step=global_step)
 
     for epoch in range(args.max_epoch):
@@ -168,7 +170,7 @@ def main():
     parser.add_argument('--data-dir', required=True)
     parser.add_argument('--vocab', required=True)
     parser.add_argument('--vocab-size', type=int, default=20000)
-    parser.add_argument('--max-length', type=int, default=25)
+    parser.add_argument('--max-length', type=int, default=30)
     parser.add_argument('--rnn-type', default='lstm')
     parser.add_argument('--bidirectional', default=False, action='store_true')
     parser.add_argument('--predict-prev', default=False, action='store_true')
@@ -195,6 +197,8 @@ def main():
               'train': {'batch_size': args.batch_size,
                         'vocab_size': args.vocab_size,
                         'max_length': args.max_length}}
+    pprint(config)
+
     config_path = os.path.join(args.save_dir, 'config.yml')
     with open(config_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False)
