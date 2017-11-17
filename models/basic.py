@@ -26,11 +26,9 @@ def sequence_mask(length, max_length=None):
 
 
 def sequence_cross_entropy(logits, targets, length):
-    logits_flat = logits.view(-1, logits.size(-1))
-    log_probs_flat = functional.log_softmax(logits_flat)
-    targets_flat = targets.view(-1, 1)
-    losses_flat = -torch.gather(log_probs_flat, dim=1, index=targets_flat)
-    losses = losses_flat.view(*targets.size())
+    log_probs = functional.log_softmax(logits, dim=2)
+    losses = -torch.gather(log_probs, dim=2, index=targets.unsqueeze(2))
+    losses = losses.squeeze(2)
     mask = sequence_mask(length=length, max_length=logits.size(0))
     losses.data.masked_fill_(mask=~mask, value=0)
     loss = losses.sum() / losses.size(1)

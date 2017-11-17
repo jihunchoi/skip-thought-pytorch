@@ -89,7 +89,15 @@ class Preprocessor(object):
         self.gpu = gpu
 
     def _split_into_words(self, batch):
-        return [self.split_fn(d)[:self.max_length] for d in batch]
+        return [self._strip_bos_eos(self.split_fn(d))[:self.max_length]
+                for d in batch]
+
+    def _strip_bos_eos(self, d):
+        if d[0] == self.vocab.bos:
+            d = d[1:]
+        if d[-1] == self.vocab.eos:
+            d = d[:-1]
+        return d
 
     def _append_eos(self, batch):
         return [d + [self.vocab.eos] for d in batch]

@@ -55,8 +55,11 @@ class SkipThought(nn.Module):
         _, encoder_state = self.encoder(words=src[0], length=src[1])
         if isinstance(encoder_state, tuple):  # LSTM
             encoder_state = encoder_state[0]
-        context = (encoder_state.transpose(0, 1).contiguous()
-                   .view(-1, self.hidden_dim))
+        if self.bidirectional:
+            context = (encoder_state.transpose(0, 1).contiguous()
+                       .view(-1, self.hidden_dim))
+        else:
+            context = encoder_state.squeeze(0)
         logits = dict()
         for k in tgt:
             logits_k, _ = self.get_decoder(k)(
